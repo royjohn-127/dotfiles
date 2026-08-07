@@ -3,7 +3,9 @@
 
 **Your setup:** Windows Terminal (primary) + VS Code integrated terminal, PowerShell 7.6.4, Miniconda installed, dotfiles repo will live on `F:\dotfiles`.
 
-**Miniconda note:** `conda init` writes an auto-generated block (`# >>> conda initialize >>>` ... `# <<< conda initialize <<<`) into your PowerShell profile and your WSL `.bashrc`. We will **not** touch or remove that block — we only add to the same files, so conda keeps working untouched.
+**Miniconda note:** PowerShell actually loads up to **four** separate profile files on startup, not just one. `$PROFILE` only points to one of them (`Microsoft.PowerShell_profile.ps1`, called `CurrentUserCurrentHost`). `conda init powershell` writes its hook into a *different* one — `profile.ps1` (`CurrentUserAllHosts`) — which loads for every PowerShell host (pwsh, VS Code's terminal, etc.), not just interactive pwsh sessions. Both files get folded into the repo in Step 5, and WSL's `.bashrc` gets its own line in Step 7.
+
+**Performance note:** by default, `conda init` writes an *eager* hook that spawns `conda.exe` and rebuilds the shell hook on **every single shell start** — this alone added ~4.4 seconds to every new terminal here. Step 5 replaces it with a *lazy* version: startup defines a lightweight stub, and the real hook only runs the first time you actually type `conda` in a session (paying that cost once, not every launch).
 
 ---
 
@@ -75,15 +77,17 @@ Worth knowing about what's in it, since it affects what you'll see in the prompt
 
 ---
 
-## Step 5 — PowerShell 7 profile (Terminal-Icons + Oh My Posh)
+## Step 5 — PowerShell 7 profile (Terminal-Icons + Oh My Posh + conda)
 
-Since Miniconda already wrote into your real profile, we **migrate that file into the repo** (preserving conda's block), then symlink the real location back to it — so editing the repo is the same as editing your live profile.
+Two separate files get folded into the repo here — same symlink pattern for both, so editing the repo is the same as editing your live profiles.
+
+### 5a. `Microsoft.PowerShell_profile.ps1` (Terminal-Icons + Oh My Posh)
 
 ```powershell
 # Where does your live profile currently point?
 $PROFILE
 
-# Copy the EXISTING profile (with conda's block already in it) into the repo
+# Copy the EXISTING profile into the repo
 Copy-Item $PROFILE F:\dotfiles\powershell\Microsoft.PowerShell_profile.ps1 -Force
 
 # Replace the original with a symlink into the repo
@@ -98,11 +102,35 @@ Install Terminal-Icons:
 Install-Module -Name Terminal-Icons -Repository PSGallery -Scope CurrentUser
 ```
 
-Open `F:\dotfiles\powershell\Microsoft.PowerShell_profile.ps1` and add these two lines at the **end** (below conda's block — leave that block exactly as-is):
-
+Final content of `F:\dotfiles\powershell\Microsoft.PowerShell_profile.ps1`:
 ```powershell
 Import-Module Terminal-Icons
 oh-my-posh init pwsh --config 'F:\dotfiles\themes\minimal-clean.omp.json' | Invoke-Expression
+```
+
+### 5b. `profile.ps1` (conda, lazy-loaded)
+
+This is the file `conda init powershell` actually wrote to (`C:\Users\rj\OneDrive\Documents\PowerShell\profile.ps1`) — separate from the one above, and it's what was adding several seconds to every shell start.
+
+```powershell
+Copy-Item 'C:\Users\rj\OneDrive\Documents\PowerShell\profile.ps1' F:\dotfiles\powershell\profile.ps1 -Force
+Remove-Item 'C:\Users\rj\OneDrive\Documents\PowerShell\profile.ps1'
+New-Item -ItemType SymbolicLink -Path 'C:\Users\rj\OneDrive\Documents\PowerShell\profile.ps1' -Target 'F:\dotfiles\powershell\profile.ps1'
+```
+
+Final content of `F:\dotfiles\powershell\profile.ps1` (the lazy-load swap — startup defines a stub, real hook only runs the first time `conda` is actually typed):
+```powershell
+#region conda initialize (lazy — see note below)
+function conda {
+    Remove-Item Function:\conda -ErrorAction SilentlyContinue
+    If (Test-Path "C:\Users\rj\miniconda3\Scripts\conda.exe") {
+        (& "C:\Users\rj\miniconda3\Scripts\conda.exe" "shell.powershell" "hook") | Out-String | Invoke-Expression
+    }
+    conda @args
+}
+#endregion
+# NOTE: if Miniconda is reinstalled/updated and it re-runs `conda init powershell`,
+# it will overwrite this back to the slow eager version. Reapply the lazy wrapper above.
 ```
 
 Reload without closing the window:
@@ -110,7 +138,7 @@ Reload without closing the window:
 . $PROFILE
 ```
 
-**Verify:** prompt changes to the themed one; running `ls` shows file-type icons.
+**Verify:** open a *fresh* tab — prompt is themed, `ls` shows icons, and startup feels fast (~2.5s here, down from ~7s with the eager conda hook). Then run `conda activate base` — first call in a session takes a few seconds (the one-time hook load), every `conda` command after that in the same session is instant.
 
 ---
 
@@ -195,18 +223,22 @@ git push -u origin main
 ### Restoring on a new device
 1. Clone the repo to that device's equivalent path (e.g. `F:\dotfiles` if it also has an F: drive).
 2. Repeat Steps 1–3 (Oh My Posh, font, Clink) on the new machine.
-3. Re-run the `Copy-Item` / symlink commands from Step 5 for the new machine's `$PROFILE`.
+3. Install Miniconda if not already there, then re-run the symlink commands from **both** 5a and 5b — check `$PROFILE`, `$PROFILE.CurrentUserAllHosts`, and where conda actually installed (the `conda.exe` path inside `profile.ps1` may differ per device/username and need updating).
 4. Re-run `clink installscripts` (Step 6) and re-run `Install-Module Terminal-Icons`.
 5. Paste the one WSL line from Step 7 into the new device's `~/.bashrc`.
 
-**Known limitation:** paths in the theme configs are hardcoded to `F:\dotfiles\...`. If a future device doesn't have an F: drive, update the `--config` path in the PowerShell profile, the `.lua` file, and `.bashrc` accordingly.
+**Known limitations:**
+- Paths in the theme configs are hardcoded to `F:\dotfiles\...`. If a future device doesn't have an F: drive, update the `--config` path in both profile files, the `.lua` file, and `.bashrc`.
+- The conda lazy-load block in `profile.ps1` hardcodes the `conda.exe` path and username (`C:\Users\rj\miniconda3\...`). On a new device, update that path to match where Miniconda actually installs.
+- If Miniconda gets reinstalled/updated on any device and re-runs `conda init powershell`, it will silently overwrite `profile.ps1` back to the slow eager version — reapply the lazy wrapper from Step 5b afterward.
 
 ---
 
 ## Final checklist
 
-- [ ] New Windows Terminal → PowerShell tab: themed prompt + icons on `ls`
+- [ ] New Windows Terminal → PowerShell tab: themed prompt + icons on `ls`, starts in ~2.5s not ~7s
 - [ ] New Windows Terminal → CMD tab: themed prompt (icons not expected here)
 - [ ] New Windows Terminal → Ubuntu (WSL) tab: themed prompt
 - [ ] VS Code integrated terminal (PowerShell): themed prompt
+- [ ] `conda activate base` works (slow the first time per session, instant after)
 - [ ] `git log` inside `F:\dotfiles` shows your commit, and the files are visible on GitHub
