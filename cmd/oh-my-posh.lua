@@ -1,0 +1,1 @@
+load(io.popen('oh-my-posh init cmd --config "F:/dotfiles/themes/minimal-clean.omp.json"'):read("*a"))()
