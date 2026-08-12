@@ -16,6 +16,23 @@
           "template": " {{ if .WSL }}WSL {{ end }}{{.Icon}} "
         },
         {
+          "type": "session",
+          "style": "plain",
+          "foreground": "#f78c6c",
+          "background": "transparent",
+          "template": "{{ if .Env.SSH_CONNECTION }}\uf489 {{ .UserName }}@{{ .HostName }} {{ end }}"
+        },
+        {
+          "type": "root",
+          "style": "plain",
+          "foreground": "#ff5370",
+          "background": "transparent",
+          "properties": {
+            "root_icon": "\uf0e7"
+          },
+          "template": "{{ .Icon }} "
+        },
+        {
           "type": "path",
           "style": "plain",
           "foreground": "#c3e88d",
@@ -33,7 +50,7 @@
           "properties": {
             "branch_icon": " ",
             "fetch_status": true,
-            "fetch_upstream_icon": true
+            "fetch_upstream_icon": false
           },
           "template": "{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }} "
         },
@@ -43,7 +60,12 @@
           "foreground": "#8bc34a",
           "background": "transparent",
           "properties": {
-            "fetch_version": true
+            "fetch_version": true,
+            "display_mode": "files"
+          },
+          "cache": {
+            "duration": "5m",
+            "strategy": "folder"
           },
           "template": "\ue718 {{ .Full }} "
         },
@@ -56,7 +78,26 @@
             "fetch_version": true,
             "display_mode": "files"
           },
+          "cache": {
+            "duration": "5m",
+            "strategy": "folder"
+          },
           "template": "\ue235 {{ if .Error }}{{ .Error }}{{ else }}{{ .Full }}{{ end }} "
+        },
+        {
+          "type": "go",
+          "style": "plain",
+          "foreground": "#00acd7",
+          "background": "transparent",
+          "properties": {
+            "fetch_version": true,
+            "display_mode": "files"
+          },
+          "cache": {
+            "duration": "5m",
+            "strategy": "folder"
+          },
+          "template": "\ue627 {{ .Full }} "
         }
       ]
     },
