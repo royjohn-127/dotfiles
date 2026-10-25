@@ -1,0 +1,4 @@
+# Local backups and secrets must never be committed
+*.bak
+.env
+.env.*
